@@ -1,0 +1,10 @@
+﻿venv/
+.venv/
+.env
+resume_db/
+__pycache__/
+*.pyc
+data/raw_resumes/
+data/resumes/
+data/extracted/
+data/cleaned/
