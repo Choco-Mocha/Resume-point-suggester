@@ -1,0 +1,62 @@
+add resumes to data/resumes
+python src\ingest.py
+python src\check_extraction.py
+python src\clean.py
+python src\chunk.py
+python src\dedupe_boilerplate.py
+python src\embed_store.py
+python src\rewrite.py
+
+
+Script	What it does	Skip if...
+ingest.py	                OCR new PDFs → text	Never skip — has to run first, but it auto-skips already-processed files (remember the if os.path.exists(out_path) check), so it's cheap to re-run even with old + new resumes mixed together
+check_extraction.py       	Sanity check for OCR failures	Optional, but good habit especially with new resumes you haven't seen the layout of yet
+clean.py	                Tidies raw text	Re-run always — it's fast, just re-processes everything in data/extracted/
+chunk.py	                Splits into bullets	Re-run always — also fast, reprocesses everything in data/cleaned/
+dedupe_boilerplate.py	    Removes repeated headers	Re-run always — needed since new resumes add new content to chunks.json
+embed_store.py	            Embeds + stores in Chroma	This is the one to watch — see below
+
+erase and create vectorDB every time we add new resumes
+how?->
+Remove-Item -Recurse -Force resume_db
+python src\embed_store.py
+
+At the start: give these commmands in terminal
+cd "C:\Users\s_yadav\OneDrive\Desktop\Resume suggester llm"
+pwd
+((you should be in this folder))
+.venv\Scripts\activate
+((you should see (.venv) at the start))
+
+
+1. Activate venv
+   .venv\Scripts\activate
+
+2. Extract resumes
+   python src\ingest.py
+
+3. Clean text
+   python src\clean.py
+
+4. Chunk resumes
+   python src\chunk.py
+
+5. Create embeddings
+   python src\embed_store.py
+
+6. Test retrieval
+   python src\test_retrieve.py
+
+7. Rewrite resume bullets
+   python src\rewrite.py
+
+   how to use requriements 
+   git clone https://github.com/Choco-Mocha/Resume-point-suggester.git
+
+cd Resume-point-suggester
+
+python -m venv .venv
+
+.venv\Scripts\activate
+
+pip install -r requirements.txt
