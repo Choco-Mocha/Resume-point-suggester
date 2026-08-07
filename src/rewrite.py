@@ -31,6 +31,22 @@ def retrieve_similar_bullets(user_text, n_results=8):
     return list(zip(documents, metadatas, distances))
 
 
+def get_source_cluster(source_name, exclude_text=None, max_bullets=6):
+    """
+    Fetch other bullets belonging to the same source resume, so the LLM
+    can see a real example of what bullets tend to cluster together
+    (style/structure reference only).
+    """
+    result = collection.get(
+        where={SOURCE_KEY: source_name},
+        include=["documents"],
+    )
+    docs = result.get("documents", [])
+    if exclude_text:
+        docs = [d for d in docs if d.strip() != exclude_text.strip()]
+    return docs[:max_bullets]
+
+
 def rewrite_bullet(user_text):
     matches = retrieve_similar_bullets(user_text, n_results=8)
 
@@ -38,6 +54,23 @@ def rewrite_bullet(user_text):
 
     # Top 3 sources by similarity (lowest distance = most similar)
     top_sources = matches[:3]
+
+    # Pull real bullet clusters from the top matching sources — shows
+    # what OTHER bullets appeared alongside a similar point in real
+    # resumes, purely as structural inspiration.
+    seen_sources = set()
+    cluster_blocks = []
+    for doc, meta, _dist in top_sources:
+        source_name = meta.get(SOURCE_KEY, "unknown") if meta else "unknown"
+        if source_name in seen_sources or source_name == "unknown":
+            continue
+        seen_sources.add(source_name)
+        cluster = get_source_cluster(source_name, exclude_text=doc)
+        if cluster:
+            cluster_text = "\n".join(f"  - {c}" for c in cluster)
+            cluster_blocks.append(f"From a resume with a similar point:\n{cluster_text}")
+
+    clusters_block = "\n\n".join(cluster_blocks) if cluster_blocks else "(no additional cluster examples found)"
 
     prompt = f"""You are a resume writing coach.
 
@@ -47,21 +80,35 @@ The user wrote this raw bullet point:
 Here are examples of strong, well-written resume bullets from similar contexts (for STYLE and STRUCTURE reference only — do not copy their content, facts, numbers, or achievements):
 {examples_block}
 
+Here are examples of OTHER bullets that appeared alongside similar points in real resumes (for STRUCTURE/PATTERN reference only — shows what kinds of complementary points people typically pair with a bullet like this):
+{clusters_block}
+
+TASK 1 — Rewrite the user's bullet:
 Generate 3 different rewritten versions of the user's bullet point. Each version should:
 - Start with a strong action verb
 - Be concise (roughly 1 line, ~20-25 words)
 - If a metric or impact is implied but missing, flag it clearly as [ADD METRIC] rather than inventing one
 - Stay strictly truthful to what the user actually wrote — do not add achievements, numbers, or scope they didn't state
+Vary the 3 versions in approach — e.g. one emphasizes leadership, one emphasizes outcome/impact, one is the most concise version possible.
 
-Vary the 3 versions in approach — for example, one could emphasize leadership, one could emphasize the outcome/impact, and one could be the most concise version possible.
+TASK 2 — Suggest companion bullets:
+Resume bullets for a single project/role/initiative usually come in a cluster of 3-4 covering different angles (e.g. context/scope, specific actions or skills used, collaboration/leadership, quantified impact/result). Based on the user's bullet and the pattern shown in the cluster examples above, suggest 2-3 ADDITIONAL bullet points the user could write to round out this same achievement.
+- These must be FILL-IN-THE-BLANK templates, not invented facts — use bracketed placeholders like [describe X] or [ADD NUMBER] for anything you don't actually know
+- Each suggestion should target a DIFFERENT angle than the user's original bullet and than each other
+- Keep each suggestion to one line
 
-Format your response exactly like this:
+Format your response EXACTLY like this:
 
 Option 1: [rewritten bullet]
 Option 2: [rewritten bullet]
 Option 3: [rewritten bullet]
 
-Why: [one sentence explaining the overall changes made across all versions]"""
+Why: [one sentence explaining the overall changes made across all versions]
+
+Companion bullets you could add:
+1. [template bullet with placeholders]
+2. [template bullet with placeholders]
+3. [template bullet with placeholders]"""
 
     response = client.models.generate_content(
         model="gemini-flash-latest",
